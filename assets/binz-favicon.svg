@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="BinZ">
+  <!-- Background -->
+  <rect width="128" height="128" rx="28" fill="#eaf4e6"/>
+  <!-- Recycling symbol arc 1 (pine) -->
+  <path d="M34 50 C45 27 65 21 82 32" fill="none" stroke="#174e2a" stroke-width="13" stroke-linecap="round"/>
+  <path d="M82 32 L72 24 L94 20 L101 42 L88 36" fill="#174e2a"/>
+  <!-- Recycling symbol arc 2 (teal) -->
+  <path d="M91 55 C104 76 94 98 73 106" fill="none" stroke="#0b7c77" stroke-width="13" stroke-linecap="round"/>
+  <path d="M73 106 L87 108 L68 122 L48 110 L62 108" fill="#0b7c77"/>
+  <!-- Recycling symbol arc 3 (leaf) -->
+  <path d="M43 100 C17 96 8 78 14 57" fill="none" stroke="#6f8f4b" stroke-width="13" stroke-linecap="round"/>
+  <path d="M14 57 L5 69 L5 45 L28 39 L20 52" fill="#6f8f4b"/>
+  <!-- Center circle -->
+  <circle cx="60" cy="65" r="11" fill="#356f38"/>
+</svg>

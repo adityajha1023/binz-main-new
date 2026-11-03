@@ -1,0 +1,35 @@
+{
+  "name": "binz",
+  "version": "1.0.0",
+  "description": "BinZ is a recycling and scrap-collection web project. It combines a static HTML/CSS/JavaScript frontend with an Express/MongoDB backend. Users can create an account, sign in, book a scrap pickup by phone, browse scrap prices, view a Z-Coin leaderboard, submit an e-waste ticket, and use the video-upload reward flow.",
+  "scripts": {
+    "start:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-local.ps1",
+    "check:local": "node scripts/check-local.cjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manika-03/BinZ_Frontend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "bugs": {
+    "url": "https://github.com/manika-03/BinZ_Frontend/issues"
+  },
+  "homepage": "https://github.com/manika-03/BinZ_Frontend#readme",
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.1.0",
+    "chart.js": "^4.5.1",
+    "lucide-react": "^1.34.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
+  }
+}
