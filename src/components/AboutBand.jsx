@@ -17,7 +17,14 @@ export default function AboutBand() {
         </p>
         <a className="about-project-link" href="/#about">About the BinZ student project →</a>
       </div>
-      <img src="/assets/binz-community-recycling.png" alt="Volunteer collecting waste outdoors" />
+      <img
+        src="/assets/binz-community-recycling.webp"
+        alt="Volunteer collecting waste outdoors"
+        width="1200"
+        height="800"
+        loading="lazy"
+        decoding="async"
+      />
     </section>
   );
 }

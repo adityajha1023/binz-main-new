@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck,
   Check,
   ClipboardCheck,
   FileText,
+  FileWarning,
   Filter,
   Leaf,
   MoreHorizontal,
@@ -14,6 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 import { Button, FormField, FormMessage, Input, Select, Textarea } from './ui';
+import { requestJson } from '../services/requestJson';
 
 const initialApplications = [
   { id: 'APP-1042', name: 'GreenLoop Recycling', city: 'Greater Noida', materials: 'PCB, batteries, cables', submitted: 'Today, 09:14', status: 'Pending review' },
@@ -53,9 +55,17 @@ function Metric({ label, value, detail, icon: Icon }) {
 export function OperatorPage() {
   const [applications, setApplications] = useState(initialApplications);
   const [assignments, setAssignments] = useState(initialAssignments);
+  const [cleanupReviews, setCleanupReviews] = useState([]);
+  const [cleanupReasons, setCleanupReasons] = useState({});
   const [filter, setFilter] = useState('All');
   const [message, setMessage] = useState('');
   const filteredApplications = applications.filter((application) => filter === 'All' || application.status === filter);
+
+  useEffect(() => {
+    requestJson('/cleanup-verifications', { credentials: 'include' })
+      .then((result) => setCleanupReviews(Array.isArray(result.verifications) ? result.verifications : []))
+      .catch(() => setCleanupReviews([]));
+  }, []);
 
   function updateApplication(id, status) {
     setApplications((current) => current.map((application) => application.id === id ? { ...application, status } : application));
@@ -67,6 +77,26 @@ export function OperatorPage() {
     setMessage(`Assignment ${id} updated.`);
   }
 
+  async function reviewCleanup(verificationId, status) {
+    const rejectionReason = cleanupReasons[verificationId]?.trim();
+    if (status === 'rejected' && !rejectionReason) {
+      setMessage('Add a rejection reason before rejecting a cleanup video.');
+      return;
+    }
+    try {
+      const result = await requestJson(`/cleanup-verifications/${verificationId}/review`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, ...(status === 'rejected' ? { rejectionReason } : {}) }),
+      });
+      setCleanupReviews((current) => current.map((item) => item.verificationId === verificationId ? result.verification : item));
+      setMessage(`Cleanup verification ${verificationId} marked ${status}.`);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
   return (
     <main className="operations-page">
       <OperationsHeader eyebrow="Operator console · Demo workspace" title="Keep every collection moving." description="Review recycler applications, assign verified partners, and monitor the evidence trail from one place." icon={ClipboardCheck} />
@@ -75,7 +105,12 @@ export function OperatorPage() {
         <Metric label="Open assignments" value={assignments.filter((item) => item.status !== 'Evidence submitted').length} detail="Across Greater Noida" icon={Truck} />
         <Metric label="Evidence submitted" value={assignments.filter((item) => item.status === 'Evidence submitted').length} detail="Ready for verification" icon={BadgeCheck} />
       </div>
-      <FormMessage tone={message ? 'success' : 'info'}>{message || 'Demo data is stored in this screen only. Connect the operator API when the workflow is approved.'}</FormMessage>
+      <FormMessage tone={message && !message.includes('required') ? 'success' : 'info'}>{message || 'Cleanup verification records come from the authenticated backend. Pickup cards remain demonstration data until dispatch APIs are connected.'}</FormMessage>
+
+      <section className="ops-section" aria-labelledby="cleanup-review-title">
+        <div className="ops-section-heading"><div><p className="eyebrow">Video verification</p><h2 id="cleanup-review-title">Cleanup proof queue</h2></div><StatusPill tone="info">{cleanupReviews.filter((item) => item.status === 'pending').length} pending</StatusPill></div>
+        {!cleanupReviews.length ? <p className="ops-muted">No cleanup submissions are available for this signed-in operator.</p> : <div className="ops-assignment-grid">{cleanupReviews.map((verification) => <article className="ops-assignment-card ui-card" key={verification.verificationId}><div className="ops-card-top"><div><span className="eyebrow">{verification.verificationId}</span><h3>{verification.originalFilename}</h3></div><StatusPill tone={verification.status === 'approved' ? 'success' : verification.status === 'rejected' ? 'warning' : 'info'}>{verification.status}</StatusPill></div><p className="ops-muted">{new Date(verification.submittedAt).toLocaleString()} · {Math.round(verification.sizeBytes / 1024)} KB</p>{verification.status === 'pending' ? <><FormField label="Rejection reason" value={cleanupReasons[verification.verificationId] || ''} placeholder="Required only when rejecting" onChange={(event) => setCleanupReasons((current) => ({ ...current, [verification.verificationId]: event.target.value }))} /><div className="ops-actions"><Button size="compact" onClick={() => reviewCleanup(verification.verificationId, 'approved')}><Check size={16} /> Approve</Button><Button size="compact" variant="secondary" onClick={() => reviewCleanup(verification.verificationId, 'rejected')}><FileWarning size={16} /> Reject</Button></div></> : <p className="ops-muted">{verification.status === 'approved' ? `${verification.reward} Z-Coins confirmed and credited.` : verification.rejectionReason}</p>}</article>)}</div>}
+      </section>
 
       <section className="ops-section" aria-labelledby="applications-title">
         <div className="ops-section-heading"><div><p className="eyebrow">Partner onboarding</p><h2 id="applications-title">Recycler applications</h2></div><FormField className="ops-filter" label="Show" as={Select} value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option><option>Pending review</option><option>Needs documents</option><option>Approved</option></FormField></div>

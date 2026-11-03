@@ -2983,7 +2983,7 @@ textarea:focus {
   padding: clamp(38px, 6vw, 76px);
   background:
     linear-gradient(90deg, rgba(var(--brand-tint-rgb), 0.96), rgba(var(--brand-tint-rgb), 0.82)),
-    url("/assets/binz-hero-recycling.png");
+    url("/assets/binz-hero-recycling.webp");
   background-size: cover;
   background-position: center;
   border: 1px solid var(--line);

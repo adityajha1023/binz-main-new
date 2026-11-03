@@ -1,6 +1,5 @@
 import { Button, FormField, FormMessage } from './ui';
 import React, { useEffect, useRef, useState } from 'react';
-import { Chart, registerables } from 'chart.js';
 import {
   CheckCircle2,
   ClipboardCopy,
@@ -13,8 +12,6 @@ import {
   Settings,
 } from 'lucide-react';
 import { demoImpactEntries, demoImpactStats } from '../data';
-
-Chart.register(...registerables);
 
 const trackedDevice = {
   name: 'Dell Inspiron 15',
@@ -63,10 +60,10 @@ export function EWasteTracker() {
             loop
             muted
             playsInline
-            preload="auto"
+            preload="none"
             aria-label="BinZ pickup and recycling demonstration"
           >
-            <source src="/assets/binz-promotional-video.mp4" type="video/mp4" />
+            <source src="/assets/binz-promotional-video-optimized.mp4" type="video/mp4" />
           </video>
         </div>
       </section>
@@ -177,19 +174,24 @@ export default function TrackerSection({ entries, setEntries, tickets, updateCoi
 
   useEffect(() => {
     if (!lineRef.current || !pieRef.current) return;
+    let cancelled = false;
     const styles = getComputedStyle(document.body);
     const palette = (token) => styles.getPropertyValue(token).trim();
-    Chart.defaults.font.family = styles.fontFamily;
-    Chart.defaults.color = palette('--ink');
 
     if (lineChartRef.current) lineChartRef.current.destroy();
     if (pieChartRef.current) pieChartRef.current.destroy();
 
-    const labels = chartEntries.map((e) => e.date);
-    const solidData = chartEntries.map((e) => Number((e.solid * 0.9).toFixed(2)));
-    const ewasteData = chartEntries.map((e) => Number((e.ewaste * 2.6).toFixed(2)));
+    const renderCharts = () => import('chart.js').then(({ Chart, registerables }) => {
+      if (cancelled || !lineRef.current || !pieRef.current) return;
+      Chart.register(...registerables);
+      Chart.defaults.font.family = styles.fontFamily;
+      Chart.defaults.color = palette('--ink');
 
-    lineChartRef.current = new Chart(lineRef.current, {
+      const labels = chartEntries.map((e) => e.date);
+      const solidData = chartEntries.map((e) => Number((e.solid * 0.9).toFixed(2)));
+      const ewasteData = chartEntries.map((e) => Number((e.ewaste * 2.6).toFixed(2)));
+
+      lineChartRef.current = new Chart(lineRef.current, {
       type: 'line',
       data: {
         labels: labels.length ? labels : ['Start'],
@@ -219,9 +221,9 @@ export default function TrackerSection({ entries, setEntries, tickets, updateCoi
         plugins: { legend: { labels: { boxWidth: 12, color: palette('--ink') } } },
         scales: { y: { beginAtZero: true, title: { display: true, text: 'kg CO2' } } },
       },
-    });
+      });
 
-    pieChartRef.current = new Chart(pieRef.current, {
+      pieChartRef.current = new Chart(pieRef.current, {
       type: 'doughnut',
       data: {
         labels: ['Solid Waste', 'E-Waste'],
@@ -240,9 +242,24 @@ export default function TrackerSection({ entries, setEntries, tickets, updateCoi
         cutout: '66%',
         plugins: { legend: { position: 'bottom' } },
       },
+      });
     });
 
+    let observer;
+    if ('IntersectionObserver' in window) {
+      observer = new IntersectionObserver((observations) => {
+        if (!observations.some((observation) => observation.isIntersecting)) return;
+        observer.disconnect();
+        renderCharts();
+      }, { rootMargin: '240px' });
+      observer.observe(lineRef.current);
+    } else {
+      renderCharts();
+    }
+
     return () => {
+      cancelled = true;
+      observer?.disconnect();
       lineChartRef.current?.destroy();
       pieChartRef.current?.destroy();
     };

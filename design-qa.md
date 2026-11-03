@@ -55,7 +55,7 @@
 - Demo video placement check: `.device-status-card .tracker-video` count is `0`; `.device-status-card .device-visual svg` exists; `.binz-demo-section .tracker-video` exists at the top of the tracker page.
 - Demo-first order check: `.ewaste-tracker` child order is `binz-demo-section`, `tracker-page-hero`, `tracker-journey`, `processing-summary`, `report-action`.
 - Demo size check: the top `How BinZ works` section now renders larger, with the video frame measured at `640 x 360`, section height `473px`, heading `42px`, and body text `18px` in the verified browser viewport.
-- Autoplay video check: `.tracker-video` exists in the new `How BinZ works` section, uses `/assets/binz-promotional-video.mp4`, and is configured with `autoplay`, `loop`, `muted`, `playsInline`, and `preload="auto"`.
+- Autoplay video check: `.tracker-video` exists in the new `How BinZ works` section, uses the compressed `/assets/binz-promotional-video-optimized.mp4`, and is configured with `autoplay`, `loop`, `muted`, `playsInline`, and `preload="none"` to avoid downloading it before needed.
 - Video asset check: `http://localhost:5503/assets/binz-promotional-video.mp4` responds with `200`, `content-type: video/mp4`, and `content-length: 17501347`.
 - Duplicate logo check: `.ewaste-tracker img` count is `0`; header logo count remains `1`.
 - Page-shell check: `.ewaste-tracker` background is transparent, border width is `0px`, and box shadow is `none`.

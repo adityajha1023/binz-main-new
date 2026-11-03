@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, Mail, Phone, Search } from 'lucide-react';
 import { Button, FormField, FormMessage, Select, Textarea } from './ui';
 import { pageIndex, routeHref } from '../navigation';
-import { scrapItems } from '../data';
+import { requestJson } from '../services/requestJson';
 
 const contactEmail = 'cloudynx.tech@gmail.com';
 const reviewNote = 'Project information — team review pending. This is not a final approved policy.';
@@ -21,17 +21,23 @@ export function SitemapPage() {
 
 function queryFromHash() { return new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || ''; }
 export function SearchPage({ currentPage }) {
-  const searchRef = useRef(null);
   const [query, setQuery] = useState(queryFromHash);
   const [submitted, setSubmitted] = useState(queryFromHash);
+  const [results, setResults] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   useEffect(() => { const value = queryFromHash(); setQuery(value); setSubmitted(value); }, [currentPage]);
-  useEffect(() => { searchRef.current?.focus({ preventScroll: true }); }, []);
-  const results = useMemo(() => {
-    const terms = submitted.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
-    if (!terms.length) return [];
-    const pages = pageIndex.filter((page) => page.route !== '#search').map((page) => ({ ...page, href: routeHref(page.route), kind: 'Page' }));
-    const materials = scrapItems.map((item) => ({ title: item.name, description: item.note, keywords: item.category, href: routeHref('#scrap-catalogue'), kind: 'Material' }));
-    return [...pages, ...materials].filter((item) => terms.every((term) => `${item.title} ${item.description} ${item.keywords}`.toLocaleLowerCase().includes(term)));
+  useEffect(() => {
+    const trimmed = submitted.trim();
+    if (!trimmed) { setResults([]); setTotal(0); setError(''); return undefined; }
+    let active = true;
+    setLoading(true);
+    requestJson(`/search?q=${encodeURIComponent(trimmed)}&limit=20`)
+      .then((result) => { if (!active) return; setResults(Array.isArray(result.results) ? result.results : []); setTotal(Number(result.total) || 0); setError(''); })
+      .catch((nextError) => { if (!active) return; setResults([]); setTotal(0); setError(nextError.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [submitted]);
   function search(event) {
     event.preventDefault();
@@ -41,12 +47,13 @@ export function SearchPage({ currentPage }) {
   }
   return <Page title="Search BinZ" intro="Search the page directory and accepted-material catalogue. This search runs on your device and does not search private accounts or live tickets.">
     <form className="site-search-form" role="search" aria-label="Search BinZ content" onSubmit={search}>
-      <FormField ref={searchRef} label="Search pages and materials" id="siteSearchQuery" type="search" maxLength={150} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try pickup, laptop or recycler" />
+      <FormField label="Search pages, materials and recyclers" id="siteSearchQuery" type="search" maxLength={150} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try pickup, loha kabad or plastic waste" />
       <Button type="submit"><Search aria-hidden="true" /> Search</Button>
     </form>
-    <p role="status" aria-live="polite">{submitted.trim() ? `${results.length} result${results.length === 1 ? '' : 's'} for “${submitted}”.` : 'Enter a topic, service or material to start searching.'}</p>
-    {submitted.trim() && !results.length && <FormMessage>No matching pages or materials. Try fewer words, check the spelling, or <a href={routeHref('#sitemap')}>browse the sitemap</a>.</FormMessage>}
-    <ul className="site-search-results">{results.map((result) => <li className="ui-card" key={`${result.kind}-${result.title}`}><span className="eyebrow">{result.kind}</span><h2><a href={result.href}>{result.title}</a></h2><p>{result.description}</p></li>)}</ul>
+    <p role="status" aria-live="polite">{loading ? 'Searching BinZ…' : submitted.trim() ? `${total} result${total === 1 ? '' : 's'} for “${submitted}”.` : 'Enter a topic, material, Hindi phrase or recycler to start searching.'}</p>
+    {error && <FormMessage tone="error">{error}</FormMessage>}
+    {submitted.trim() && !loading && !error && !results.length && <FormMessage>No matching public content. Try “loha kabad”, “plastic waste”, “ई-कचरा”, or <a href={routeHref('#sitemap')}>browse the sitemap</a>.</FormMessage>}
+    <ul className="site-search-results">{results.map((result) => <li className="ui-card" key={`${result.type}-${result.id}`}><span className="eyebrow">{result.type}</span><h2><a href={result.href}>{result.title}</a></h2><p>{result.excerpt}</p></li>)}</ul>
   </Page>;
 }
 
@@ -87,7 +94,7 @@ export function PolicyPage({ kind }) {
   return <Page title={titles[kind]} intro={reviewNote}>
     <FormMessage>Prepared from the current frontend on 26 October 2026. The team must confirm the public owner, service arrangements, provider handling, retention and asset permissions before treating this as an approved policy.</FormMessage>
     <article className="ui-card site-prose">
-      {kind === 'privacy' && <><h2>Data used by the current website</h2><p>Account forms send entered details to the configured account service. The browser can keep profile details, language preference, local pickup details, ticket counts and impact entries in local storage. Cleanup videos and estimator images remain local in the current demo unless a service adapter is connected.</p><h2>Other services and storage</h2><p>Authentication can use a session cookie. Fonts are requested from Google Fonts. Selecting Hindi or Marathi uses an external Google translation service for visible page text. That text may include information shown on the page. Contact buttons open your phone or email app; an email draft is not sent automatically.</p><h2>Your practical choices</h2><p>Avoid entering sensitive information in the prototype. You can clear this site’s browser storage in your browser settings; that removes local settings and entries but does not delete data already held by a server or email provider. Ask the team about server-held records through Contact.</p><h2>Still to confirm</h2><p>The public data owner, retention/deletion process, provider arrangements and handling of real uploads have not been supplied. No specific deletion timeframe or legal compliance is claimed here.</p></>}
+      {kind === 'privacy' && <><h2>Data used by the current website</h2><p>Account forms send entered details to the configured account service. The browser can keep profile details, language preference, local pickup details, ticket counts and impact entries in local storage. Cleanup videos and estimator images remain local in the current demo unless a service adapter is connected.</p><h2>Other services and storage</h2><p>Authentication can use a session cookie. Fonts are requested from Google Fonts. Interface translations use reviewed local resources and do not send page text or form data to a translation provider. Contact buttons open your phone or email app; an email draft is not sent automatically.</p><h2>Your practical choices</h2><p>Avoid entering sensitive information in the prototype. You can clear this site’s browser storage in your browser settings; that removes local settings and entries but does not delete data already held by a server or email provider. Ask the team about server-held records through Contact.</p><h2>Still to confirm</h2><p>The public data owner, retention/deletion process, provider arrangements and handling of real uploads have not been supplied. No specific deletion timeframe or legal compliance is claimed here.</p></>}
       {kind === 'terms' && <><h2>Prototype status</h2><p>BinZ is a student project. Local previews and sample screens are identified in the relevant flows. Saving details in your browser is not a confirmed pickup, purchase, registration or donation.</p><h2>Rates, rewards and estimates</h2><p>Prices and environmental figures can be indicative or estimated. Demo Z-Coins do not represent a verified payout. A real service must confirm material acceptance, collection, final price and any reward.</p><h2>Responsible use</h2><p>Use accurate information and only upload files you are authorised to share. Do not upload passwords, payment information or confidential records. Recycler registration previews do not constitute certification or approval.</p><h2>Still to confirm</h2><p>The team must approve final service eligibility, payment/refund arrangements, cancellations, responsibility and dispute contacts. These details are not invented by this prototype page.</p></>}
       {kind === 'copyright' && <><h2>BinZ identity</h2><p>The website uses the existing BinZ artwork supplied with the project. Its public rights holder and permission record still need team confirmation; use of the artwork here is not a new claim of ownership.</p><h2>Third-party assets</h2><p>The project uses Noto Sans fonts, Lucide icons and Chart.js, alongside repository images and a demonstration video. Library attribution should follow the licences supplied with those dependencies. Image/video sources and permissions need a complete team-maintained asset register.</p><h2>Corrections and credits</h2><p>If you identify missing attribution or a permission issue, contact the project team with the page and asset details. No government endorsement or ownership is implied by following design guidance.</p></>}
       <p><a href={routeHref('#contact')}>Ask the team about this information</a></p>

@@ -1,87 +1,63 @@
 import { useEffect } from 'react';
+import { supportedLanguages, translateText } from '../localization';
 
-const languageCodes = { English: 'en', Hindi: 'hi', Marathi: 'mr' };
-// Track our last write separately from new text rendered by React.
-const nodeText = new WeakMap();
-const translatedText = new Map();
+const sourceText = new WeakMap();
 
-function shouldTranslate(node) {
+function isTranslatableText(node) {
   const parent = node.parentElement;
-  return parent && !parent.closest('script, style, noscript, textarea, [data-binz-no-translate]');
+  return parent && !parent.closest('script, style, noscript, textarea, [data-binz-no-translate]') && node.textContent.trim();
 }
 
-async function translate(value, language) {
-  const key = `${language}:${value}`;
-  if (translatedText.has(key)) return translatedText.get(key);
-  const params = new URLSearchParams({ client: 'gtx', sl: 'en', tl: language, dt: 't', q: value });
-  const response = await fetch(`https://translate.googleapis.com/translate_a/single?${params}`);
-  if (!response.ok) throw new Error('Translation unavailable');
-  const result = await response.json();
-  const output = result[0]?.map((part) => part[0]).join('') || value;
-  translatedText.set(key, output);
-  return output;
+function translateAttributes(element, language) {
+  ['aria-label', 'aria-description', 'title', 'placeholder'].forEach((attribute) => {
+    const value = element.getAttribute(attribute);
+    if (!value) return;
+    const original = element.dataset[`binzOriginal${attribute.replace(/(^|-)(.)/g, (_, __, letter) => letter.toUpperCase())}`] || value;
+    element.dataset[`binzOriginal${attribute.replace(/(^|-)(.)/g, (_, __, letter) => letter.toUpperCase())}`] = original;
+    element.setAttribute(attribute, language === 'English' ? original : translateText(original, language));
+  });
 }
 
-async function translatePage(language, isCurrent) {
-  const nodes = [...document.body.querySelectorAll('*')]
+function translatePage(language) {
+  document.querySelectorAll('*').forEach((element) => translateAttributes(element, language));
+  Array.from(document.body.querySelectorAll('*'))
     .flatMap((element) => [...element.childNodes])
-    .filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim() && shouldTranslate(node));
-
-  await Promise.all(nodes.map(async (node) => {
-    const current = node.textContent;
-    let record = nodeText.get(node);
-    if (!record || current !== record.rendered) {
-      record = { source: current, rendered: current };
-      nodeText.set(node, record);
-    }
-    const source = record.source;
-    if (language === 'en') {
-      record.rendered = source;
-      if (node.textContent !== source) node.textContent = source;
-      return;
-    }
-    try {
-      const output = await translate(source, language);
-      if (!isCurrent() || !node.isConnected || nodeText.get(node) !== record || node.textContent !== record.rendered) return;
-      record.rendered = output;
-      if (node.textContent !== output) node.textContent = output;
-    } catch {
-      // Keep English visible if translation is temporarily unavailable.
-    }
-  }));
+    .filter((node) => node.nodeType === Node.TEXT_NODE && isTranslatableText(node))
+    .forEach((node) => {
+      const current = node.textContent;
+      const original = sourceText.get(node) || current;
+      sourceText.set(node, original);
+      const output = language === 'English' ? original : translateText(original, language);
+      if (output !== current) node.textContent = output;
+    });
 }
 
 export default function SiteTranslation() {
   useEffect(() => {
-    let language = languageCodes[localStorage.getItem('binz_language') || 'English'] || 'en';
-    let translationTimer;
+    let language = localStorage.getItem('binz_language') || 'English';
+    if (!supportedLanguages[language]) language = 'English';
+    let timer;
     let disposed = false;
-    document.documentElement.lang = language;
-
-    function apply() {
-      window.clearTimeout(translationTimer);
-      const targetLanguage = language;
-      translationTimer = window.setTimeout(() => translatePage(targetLanguage, () => !disposed && language === targetLanguage), 40);
-    }
-
+    document.documentElement.lang = supportedLanguages[language];
+    const apply = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { if (!disposed) translatePage(language); }, 40);
+    };
     const observer = new MutationObserver(apply);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     apply();
-
     function handleLanguageChange(event) {
-      language = languageCodes[event.detail] || 'en';
-      document.documentElement.lang = language;
+      language = supportedLanguages[event.detail] ? event.detail : 'English';
+      document.documentElement.lang = supportedLanguages[language];
       apply();
     }
-
     window.addEventListener('binz-language-change', handleLanguageChange);
     return () => {
       disposed = true;
-      window.clearTimeout(translationTimer);
+      window.clearTimeout(timer);
       observer.disconnect();
       window.removeEventListener('binz-language-change', handleLanguageChange);
     };
   }, []);
-
   return null;
 }

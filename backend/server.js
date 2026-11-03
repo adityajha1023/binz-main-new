@@ -8,6 +8,7 @@ const twilio = require("twilio");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const rateLimit = require('express-rate-limit');
 const validator = require('validator');
@@ -135,6 +136,7 @@ const connectDB = async () => {
             useUnifiedTopology: true,
         });
         await seedDefaultRecyclers();
+        await seedScrapPrices();
         console.log("✅ MongoDB Connected");
     } catch (error) {
         console.error("❌ MongoDB Connection Error:", error);
@@ -187,6 +189,78 @@ const UserSchema = new mongoose.Schema({
     admin: { type: Boolean, default: false },
 });
 const User = mongoose.model("User", UserSchema);
+
+const cleanupVerificationSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    originalFilename: { type: String, required: true },
+    storedFilename: { type: String, required: true },
+    mimeType: { type: String, required: true },
+    sizeBytes: { type: Number, required: true },
+    fileHash: { type: String, required: true },
+    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending", index: true },
+    rejectionReason: { type: String, default: "" },
+    reward: { type: Number, default: 0 },
+    rewardCredited: { type: Boolean, default: false },
+    reviewedAt: Date,
+}, { timestamps: true });
+
+cleanupVerificationSchema.index({ userId: 1, createdAt: -1 });
+cleanupVerificationSchema.index({ userId: 1, fileHash: 1 }, { unique: true });
+const CleanupVerification = mongoose.model("CleanupVerification", cleanupVerificationSchema);
+
+const PRICE_SEED = [
+    ["iron", "Iron", 28, 26],
+    ["steel", "Steel", 42, 40],
+    ["aluminium", "Aluminium", 110, 105],
+    ["copper", "Copper", 665, 650],
+    ["brass", "Brass", 400, 390],
+    ["lead", "Lead", 128, 130],
+    ["zinc", "Zinc", 184, 180],
+];
+const priceSchema = new mongoose.Schema({
+    materialId: { type: String, required: true, trim: true },
+    materialName: { type: String, required: true, trim: true },
+    price: { type: Number, required: true, min: 0 },
+    currency: { type: String, enum: ["INR"], default: "INR" },
+    unit: { type: String, enum: ["kg"], default: "kg" },
+    location: { type: String, required: true, trim: true },
+    effectiveFrom: { type: Date, required: true },
+    effectiveTo: { type: Date, default: null },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
+    source: { type: String, required: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+}, { timestamps: true });
+priceSchema.index({ materialId: 1, location: 1, effectiveFrom: 1 }, { unique: true });
+const ScrapPrice = mongoose.model("ScrapPrice", priceSchema);
+
+function priceResponse(price) {
+    return {
+        priceId: price._id.toString(),
+        materialId: price.materialId,
+        materialName: price.materialName,
+        price: price.price,
+        currency: price.currency,
+        unit: price.unit,
+        location: price.location,
+        effectiveFrom: price.effectiveFrom,
+        effectiveTo: price.effectiveTo,
+        updatedAt: price.updatedAt,
+        status: price.status,
+        source: price.source,
+    };
+}
+
+async function seedScrapPrices() {
+    const hasPrices = await ScrapPrice.exists({});
+    if (hasPrices) return;
+    const currentFrom = new Date("2026-11-01T00:00:00.000Z");
+    const previousFrom = new Date("2026-10-01T00:00:00.000Z");
+    const records = PRICE_SEED.flatMap(([materialId, materialName, current, previous]) => [
+        { materialId, materialName, price: previous, location: "default", effectiveFrom: previousFrom, effectiveTo: currentFrom, source: "Existing indicative price history" },
+        { materialId, materialName, price: current, location: "default", effectiveFrom: currentFrom, source: "Existing current price dataset; pending business confirmation" },
+    ]);
+    await ScrapPrice.insertMany(records);
+}
 
 const LeaderboardEntry = mongoose.model("LeaderboardEntry", new mongoose.Schema({
     name: { type: String, required: true },
@@ -386,6 +460,97 @@ function normalizeRecycler(recycler) {
     };
 }
 
+const PUBLIC_SEARCH_CONTENT = [
+    { id: "home", type: "Page", title: "BinZ home", description: "Book a scrap pickup and explore responsible recycling, material prices, cleanup rewards and e-waste services.", href: "/#home", headings: "Book a pickup Sell smarter Impact tracker", keywords: "scrap collection kabad uthana pickup recycling recycle कबाड़ उठाना पुनर्चक्रण" },
+    { id: "scrap-catalogue", type: "Page", title: "Scrap catalogue", description: "Find accepted electronics, metals and appliances and choose the right next step.", href: "/#scrap-catalogue", headings: "What would you like to sell", keywords: "scrap material waste metal loha iron lohe ka kabad लोहे का कबाड़ plastic प्लास्टिक plastic kachra कचरा paper kagaz कागज" },
+    { id: "prices", type: "Page", title: "Today's scrap rates", description: "Compare backend-authoritative indicative rates by location and estimate material value.", href: "/#prices", headings: "Price discovery Estimate your scrap value", keywords: "price rate bhav भाव kilogram kg daam दाम scrap rates" },
+    { id: "services", type: "Page", title: "Refurbishing and reuse", description: "Explore repair, reuse and refurbished-device services that extend product life.", href: "/#services", headings: "Repair reuse refurbishing", keywords: "service मरम्मत marammat reuse punarupyog पुन: उपयोग repair" },
+    { id: "learn", type: "Page", title: "Know more about BinZ", description: "Learn how responsible collection, refurbishing and material recovery support a circular economy.", href: "/#learn", headings: "Learn circular recycling", keywords: "education जानकारी jaankari environment पर्यावरण recovery" },
+    { id: "about", type: "Page", title: "About BinZ", description: "A student team project for SIH 2026 focused on simpler scrap collection and responsible e-waste handling in Greater Noida.", href: "/#about", headings: "What we are building", keywords: "team project greater noida नोएडा student" },
+    { id: "contact", type: "Page", title: "Contact and feedback", description: "Find BinZ support details and prepare a message for questions or feedback.", href: "/#contact", headings: "Contact details support", keywords: "contact help support phone email sampark संपर्क" },
+    { id: "help", type: "FAQ", title: "Help and FAQ", description: "Find answers about pickup booking, e-waste tickets, rates, rewards and recycler registration.", href: "/#help", headings: "How do I request a pickup Are rates guaranteed", keywords: "faq questions madad मदद pickup booking ticket reward recycler" },
+    { id: "certifications", type: "Page", title: "Recycling certificates", description: "Understand the evidence and device-specific records expected after a recycling service.", href: "/#certifications", headings: "Provide evidence Identify the device", keywords: "certificate report proof evidence प्रमाण pramaan document" },
+    { id: "ewaste-tracker", type: "Page", title: "E-waste tracking", description: "Explore the sample pickup and recycling journey from ticket creation to recovery.", href: "/#ewaste-tracker", headings: "Track e-waste", keywords: "electronic waste e-waste ई-कचरा e kachra tracking status" },
+];
+
+const SEARCH_ALIASES = {
+    iron: ["loha", "loha kabad", "लोहे का कबाड़", "iron scrap", "metal scrap"],
+    plastic: ["plastic kachra", "प्लास्टिक", "plastic waste"],
+    paper: ["kagaz", "कागज", "paper waste", "paper scrap"],
+    recycling: ["recycle", "recycling", "पुनर्चक्रण", "punarchakran"],
+    "e-waste": ["electronic waste", "ई-कचरा", "e kachra", "electronics scrap"],
+    pickup: ["scrap collection", "कबाड़ उठाना", "kabad uthana", "collection"],
+};
+
+function normalizeSearchText(value) {
+    return String(value || "").normalize("NFKC").toLocaleLowerCase("en-IN").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function searchScore(item, queryTokens) {
+    const title = normalizeSearchText(item.title);
+    const fields = {
+        title,
+        keywords: normalizeSearchText(item.keywords),
+        headings: normalizeSearchText(item.headings),
+        description: normalizeSearchText(item.description),
+        body: normalizeSearchText(item.body),
+    };
+    let score = 0;
+    queryTokens.forEach((token) => {
+        if (fields.title === token) score += 100;
+        else if (fields.title.includes(token)) score += 60;
+        if (fields.keywords.includes(token)) score += 35;
+        if (fields.headings.includes(token)) score += 25;
+        if (fields.description.includes(token)) score += 15;
+        if (fields.body.includes(token)) score += 5;
+    });
+    return score;
+}
+
+async function searchPublicContent(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+    const expandedTokens = new Set(queryTokens);
+    Object.entries(SEARCH_ALIASES).forEach(([key, aliases]) => {
+        const normalizedAliases = aliases.map(normalizeSearchText);
+        if (queryTokens.some((token) => token === key || normalizedAliases.includes(token) || normalizedAliases.some((alias) => alias.includes(token)))) {
+            expandedTokens.add(key);
+            normalizedAliases.forEach((alias) => expandedTokens.add(alias));
+        }
+    });
+    const items = [...PUBLIC_SEARCH_CONTENT, ...[
+        ["iron", "Iron", "Heavy iron scrap and household metal items.", "Metals", "iron loha लोहे का कबाड़ lohe ka kabad scrap metal"],
+        ["steel", "Steel", "Utensils, frames and small steel scrap.", "Metals", "steel scrap स्टील"],
+        ["aluminium", "Aluminium", "Cans, frames and clean aluminium scrap.", "Metals", "aluminium aluminum एल्युमिनियम"],
+        ["copper", "Copper wire", "Copper wire value depends on grade and insulation.", "Metals", "copper copper wire तांबा"],
+        ["brass", "Brass", "Taps, fittings and clean brass scrap.", "Metals", "brass पीतल"],
+        ["lead", "Lead", "Lead scrap is collected through a controlled recovery route.", "Metals", "lead सीसा"],
+        ["zinc", "Zinc", "Clean zinc and galvanised offcuts accepted for recovery.", "Metals", "zinc जस्ता"],
+        ["plastic", "Plastic", "Plastic waste is accepted for sorting and responsible recovery.", "Materials", "plastic plastic waste plastic kachra प्लास्टिक कचरा"],
+        ["paper", "Paper scrap", "Paper scrap is accepted for recycling and material recovery.", "Materials", "paper paper scrap paper waste kagaz कागज"],
+        ["ewaste", "E-waste", "Electronic waste is routed through a safe recovery ticket flow.", "Materials", "e-waste electronic waste ई-कचरा electronics scrap"],
+    ].map(([id, title, description, group, keywords]) => ({ id, type: "Material", title, description, href: "/#scrap-catalogue", headings: group, keywords }))];
+    const recyclers = await Recycler.find({ authorized: true }).select("name serviceAreas acceptedMaterials address").lean();
+    recyclers.forEach((recycler) => items.push({
+        id: `recycler-${recycler._id}`,
+        type: "Directory",
+        title: recycler.name,
+        description: `${recycler.address || "Verified recycler"} serving ${(recycler.serviceAreas || []).join(", ")}.`,
+        href: "/recycler-matching",
+        headings: "Verified recycler directory",
+        keywords: [...(recycler.serviceAreas || []), ...(recycler.acceptedMaterials || []), "recycler recycling partner"].join(" "),
+    }));
+    return {
+        normalizedQuery,
+        results: items
+            .map((item) => ({ ...item, score: searchScore(item, [...expandedTokens]) }))
+            .filter((item) => item.score > 0)
+            .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+            .filter((item, index, list) => list.findIndex((candidate) => candidate.type === item.type && candidate.id === item.id) === index)
+            .map(({ score, headings, keywords, body, ...item }) => ({ ...item, excerpt: item.description })),
+    };
+}
+
 const leaderboardNames = [
     "Aarav Mehta", "Diya Kapoor", "Kabir Shah", "Meera Nair",
     "Rohan Verma", "Ishita Rao", "Vivaan Singh", "Anaya Joshi",
@@ -546,6 +711,104 @@ async function requireAdmin(req, res, next) {
         }
     });
 }
+
+async function findApplicablePrices(location, dateValue) {
+    const date = new Date(dateValue || Date.now());
+    if (Number.isNaN(date.getTime())) throw new Error("Invalid pricing date.");
+    const requestedLocation = sanitizeInput(location || "default") || "default";
+    const records = await ScrapPrice.find({
+        location: { $in: [requestedLocation, "default"] },
+        status: "active",
+        effectiveFrom: { $lte: date },
+        $or: [{ effectiveTo: null }, { effectiveTo: { $gt: date } }],
+    }).sort({ location: -1, effectiveFrom: -1 });
+    const selected = new Map();
+    records.forEach((record) => {
+        if (!selected.has(record.materialId)) selected.set(record.materialId, record);
+    });
+    return [...selected.values()];
+}
+
+app.get("/search", async (req, res) => {
+    try {
+        const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+        if (query.length > 150) return res.status(400).json({ message: "Search queries must be 150 characters or fewer." });
+        if (!query) return res.json({ query: "", total: 0, page: 1, limit: 20, results: [] });
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(20, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
+        const search = await searchPublicContent(query);
+        const start = (page - 1) * limit;
+        res.json({
+            query,
+            total: search.results.length,
+            page,
+            limit,
+            results: search.results.slice(start, start + limit),
+            hasMore: start + limit < search.results.length,
+        });
+    } catch (error) {
+        console.error("Public search error:", error);
+        res.status(500).json({ message: "Search is temporarily unavailable. Please try again." });
+    }
+});
+
+app.get("/scrap-prices", async (req, res) => {
+    try {
+        const prices = await findApplicablePrices(req.query.location, req.query.date);
+        res.json({
+            prices: prices.map(priceResponse),
+            requestedLocation: sanitizeInput(req.query.location || "default") || "default",
+            pricingBasis: "Location-specific rate, falling back to the backend default rate.",
+        });
+    } catch (error) {
+        res.status(400).json({ message: error.message === "Invalid pricing date." ? error.message : "Unable to load scrap prices." });
+    }
+});
+
+app.get("/scrap-prices/:materialId/history", async (req, res) => {
+    try {
+        const history = await ScrapPrice.find({ materialId: sanitizeInput(req.params.materialId) }).sort({ effectiveFrom: -1 });
+        res.json({ prices: history.map(priceResponse) });
+    } catch (error) {
+        console.error("Price history error:", error);
+        res.status(500).json({ message: "Unable to load price history." });
+    }
+});
+
+app.post("/scrap-prices", requireAdmin, async (req, res) => {
+    try {
+        const { materialId, materialName, price, location = "default", effectiveFrom, effectiveTo, source } = req.body || {};
+        const numericPrice = Number(price);
+        const from = new Date(effectiveFrom);
+        const to = effectiveTo ? new Date(effectiveTo) : null;
+        if (!materialId || !materialName || !Number.isFinite(numericPrice) || numericPrice < 0 || Number.isNaN(from.getTime()) || (to && Number.isNaN(to.getTime())) || (to && to <= from) || !source) {
+            return res.status(400).json({ message: "Valid material, non-negative price, effective dates and source are required." });
+        }
+        const normalizedLocation = sanitizeInput(location) || "default";
+        const overlap = await ScrapPrice.findOne({
+            materialId: sanitizeInput(materialId),
+            location: normalizedLocation,
+            status: "active",
+            effectiveFrom: { $lt: to || new Date("9999-12-31") },
+            $or: [{ effectiveTo: null }, { effectiveTo: { $gt: from } }],
+        });
+        if (overlap) return res.status(409).json({ message: "This material and location has an overlapping active price period." });
+        const record = await ScrapPrice.create({
+            materialId: sanitizeInput(materialId),
+            materialName: sanitizeInput(materialName),
+            price: numericPrice,
+            location: normalizedLocation,
+            effectiveFrom: from,
+            effectiveTo: to,
+            source: sanitizeInput(source),
+            updatedBy: req.admin._id,
+        });
+        res.status(201).json({ price: priceResponse(record) });
+    } catch (error) {
+        console.error("Price update error:", error);
+        res.status(500).json({ message: "Unable to create scrap price." });
+    }
+});
 
 app.post("/register", registrationLimiter, async (req, res) => {
     try {
@@ -851,15 +1114,44 @@ if (!fs.existsSync(path.join(__dirname, "uploads"))) {
     fs.mkdirSync(path.join(__dirname, "uploads"));
 }
 
+const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/ogg", "video/mpeg"]);
+const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, "uploads/"),
-    filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname).toLowerCase()}`),
 });
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: { fileSize: VIDEO_MAX_BYTES, files: 1 },
+    fileFilter: (req, file, cb) => cb(null, VIDEO_MIME_TYPES.has(file.mimetype)),
+});
 
-// Video proof is tied to the authenticated account. The reward is fixed and
-// recorded by the server, so the mobile client never invents a coin balance.
-app.post("/uploadVideo", requireSession, upload.single("video"), async (req, res) => {
+function cleanupVerificationResponse(item) {
+    return {
+        verificationId: item._id.toString(),
+        status: item.status,
+        originalFilename: item.originalFilename,
+        mimeType: item.mimeType,
+        sizeBytes: item.sizeBytes,
+        submittedAt: item.createdAt,
+        reviewedAt: item.reviewedAt || null,
+        rejectionReason: item.status === "rejected" ? item.rejectionReason || null : null,
+        reward: item.status === "approved" ? item.reward : 0,
+        rewardCredited: item.status === "approved" && item.rewardCredited === true,
+    };
+}
+
+function runVideoUpload(req, res, next) {
+    upload.single("video")(req, res, (error) => {
+        if (!error) return next();
+        if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({ message: "Cleanup videos must be 50 MB or smaller." });
+        }
+        return res.status(400).json({ message: "Choose one supported cleanup video file." });
+    });
+}
+
+app.post("/uploadVideo", requireSession, runVideoUpload, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ message: "No video file received." });
@@ -869,13 +1161,90 @@ app.post("/uploadVideo", requireSession, upload.single("video"), async (req, res
             return res.status(404).json({ message: "User not found." });
         }
 
-        const reward = 5;
-        user.coins += reward;
-        await user.save();
-        res.json({ message: `Cleanup video received. You earned ${reward} coins!`, coins: user.coins });
+        const fileHash = crypto.createHash("sha256").update(fs.readFileSync(req.file.path)).digest("hex");
+        const existing = await CleanupVerification.findOne({ userId: user._id, fileHash });
+        if (existing) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(409).json({ message: "This cleanup video has already been submitted.", verification: cleanupVerificationResponse(existing) });
+        }
+        const verification = await CleanupVerification.create({
+            userId: user._id,
+            originalFilename: req.file.originalname,
+            storedFilename: req.file.filename,
+            mimeType: req.file.mimetype,
+            sizeBytes: req.file.size,
+            fileHash,
+        });
+        res.status(201).json({ verification: cleanupVerificationResponse(verification) });
     } catch (error) {
+        if (error.code === 11000) return res.status(409).json({ message: "This cleanup video has already been submitted." });
         console.error("❌ Upload error:", error);
         res.status(500).json({ message: "❌ Server error while processing upload." });
+    }
+});
+
+app.get("/cleanup-verifications", requireSession, async (req, res) => {
+    try {
+        const verifications = await CleanupVerification.find({ userId: req.session.sub }).sort({ createdAt: -1 });
+        const user = await User.findById(req.session.sub).select("coins");
+        res.json({ verifications: verifications.map(cleanupVerificationResponse), rewardBalance: user?.coins || 0 });
+    } catch (error) {
+        console.error("❌ Cleanup history error:", error);
+        res.status(500).json({ message: "Unable to load cleanup verification history." });
+    }
+});
+
+app.get("/cleanup-verifications/:verificationId", requireSession, async (req, res) => {
+    try {
+        const verification = await CleanupVerification.findOne({
+            _id: req.params.verificationId,
+            userId: req.session.sub,
+        });
+        if (!verification) return res.status(404).json({ message: "Cleanup verification not found." });
+        const user = await User.findById(req.session.sub).select("coins");
+        res.json({ verification: cleanupVerificationResponse(verification), rewardBalance: user?.coins || 0 });
+    } catch (error) {
+        if (error.name === "CastError") return res.status(404).json({ message: "Cleanup verification not found." });
+        console.error("❌ Cleanup verification lookup error:", error);
+        res.status(500).json({ message: "Unable to load cleanup verification." });
+    }
+});
+
+app.patch("/cleanup-verifications/:verificationId/review", requireSession, async (req, res) => {
+    try {
+        const reviewer = await User.findById(req.session.sub);
+        if (!reviewer || reviewer.admin !== true) return res.status(403).json({ message: "Operator access required." });
+        const status = req.body?.status;
+        if (!["approved", "rejected"].includes(status)) return res.status(400).json({ message: "Review status must be approved or rejected." });
+        const verification = await CleanupVerification.findById(req.params.verificationId);
+        if (!verification) return res.status(404).json({ message: "Cleanup verification not found." });
+        if (verification.status !== "pending") return res.status(409).json({ message: "This verification has already been reviewed." });
+        if (status === "rejected" && typeof req.body?.rejectionReason !== "string") {
+            return res.status(400).json({ message: "A rejection reason is required." });
+        }
+
+        verification.status = status;
+        verification.reviewedAt = new Date();
+        if (status === "rejected") {
+            verification.rejectionReason = sanitizeInput(req.body.rejectionReason).slice(0, 500);
+        } else {
+            const configuredReward = Number(process.env.CLEANUP_VIDEO_REWARD);
+            verification.reward = Number.isFinite(configuredReward) && configuredReward >= 0 ? configuredReward : 0;
+            if (!verification.rewardCredited && verification.reward > 0) {
+                const user = await User.findById(verification.userId);
+                if (!user) return res.status(404).json({ message: "Verification owner was not found." });
+                user.coins += verification.reward;
+                await user.save();
+                verification.rewardCredited = true;
+            }
+        }
+        await verification.save();
+        const owner = await User.findById(verification.userId).select("coins");
+        res.json({ verification: cleanupVerificationResponse(verification), rewardBalance: owner?.coins || 0 });
+    } catch (error) {
+        if (error.name === "CastError") return res.status(404).json({ message: "Cleanup verification not found." });
+        console.error("❌ Cleanup review error:", error);
+        res.status(500).json({ message: "Unable to review cleanup verification." });
     }
 });
 

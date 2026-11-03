@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { forwardRef, useId, useState } from 'react';
 import { AlertCircle, CheckCircle2, Info, LoaderCircle } from 'lucide-react';
 
 function classes(...values) {
@@ -29,11 +29,11 @@ export function Button({ as: Element = 'button', variant, size = 'default', load
   );
 }
 
-export function Input({ className, error, type = 'text', ...props }) {
+export const Input = forwardRef(function Input({ className, error, type = 'text', ...props }, ref) {
   const choice = type === 'checkbox' || type === 'radio';
   const controlClass = choice ? 'ui-choice-control' : type === 'file' ? 'ui-file-control' : type === 'hidden' ? '' : 'ui-control';
-  return <input {...props} type={type} className={classes(controlClass, className)} aria-invalid={error ? true : props['aria-invalid']} />;
-}
+  return <input {...props} ref={ref} type={type} className={classes(controlClass, className)} aria-invalid={error ? true : props['aria-invalid']} />;
+});
 
 export function Select({ className, error, ...props }) {
   return <select {...props} className={classes('ui-control ui-select', className)} aria-invalid={error ? true : props['aria-invalid']} />;

@@ -215,8 +215,11 @@ export default function HeroSection({
 
       <div className="hero-visual" aria-label="Recycling collection preview">
         <img
-          src="/assets/binz-hero-recycling.png"
+          src="/assets/binz-hero-recycling.webp"
           alt="Sorted recyclable materials ready for collection"
+          width="1200"
+          height="675"
+          fetchPriority="high"
         />
 
         <div className="hero-card hero-card-top">

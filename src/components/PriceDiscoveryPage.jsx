@@ -1,6 +1,6 @@
 import { Button, FormField, Input, Select } from './ui';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Calculator, CalendarCheck, MapPin, Search, Square, Volume2 } from 'lucide-react';
+import { Calculator, CalendarCheck, MapPin, Search, Square, Volume2 } from 'lucide-react';
 import { getCurrentPrices, getPriceCategories } from '../services/priceService';
 import { routeHref } from '../navigation';
 
@@ -47,15 +47,12 @@ function speak(text) {
 }
 
 function PriceCard({ price, city }) {
-  const TrendIcon = price.direction === 'up' ? ArrowUp : ArrowDown;
-  const points = price.trend.map((value, index) => `${index * 34},${64 - ((value - Math.min(...price.trend)) / Math.max(1, Math.max(...price.trend) - Math.min(...price.trend))) * 46}`).join(' ');
   return (
     <article className="price-card ui-card">
       <div className="price-card-heading"><div><h3>{price.category}</h3><p>Recovered material</p></div><span>Indicative</span></div>
       <div className="price-value">₹{price.currentPrice}<small> / {price.unit}</small></div>
-      <p className="previous-price">Previous rate: ₹{price.previousPrice}/{price.unit}</p>
-      <p className={`price-change ${price.direction}`}><TrendIcon size={17} /> {price.direction === 'up' ? 'Rate increased' : 'Rate decreased'} by ₹{Math.abs(price.change)}</p>
-      <svg className="price-sparkline" viewBox="0 0 104 68" aria-label={`${price.category} price trend`}><polyline points={points} /></svg>
+      <p className="previous-price">Effective from {new Date(price.effectiveFrom).toLocaleDateString('en-IN')} · Updated {new Date(price.updatedAt).toLocaleDateString('en-IN')}</p>
+      <p className="price-change stable">Backend-authoritative rate · {price.location}</p>
       <Button className="button secondary price-listen-button" type="button" onClick={() => speak(`${price.category} is ₹${price.currentPrice} per kilogram in ${city}.`)}><Volume2 size={17} /> Listen</Button>
     </article>
   );
@@ -68,9 +65,17 @@ export default function PriceDiscoveryPage() {
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [speaking, setSpeaking] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => { getPriceCategories().then(setCategories); }, []);
-  useEffect(() => { getCurrentPrices().then(({ prices: next }) => setPrices(next)); }, []);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([getPriceCategories({ location: city }), getCurrentPrices({ location: city })])
+      .then(([nextCategories, result]) => { setCategories(nextCategories); setPrices(result.prices); setError(''); })
+      .catch((nextError) => { setPrices([]); setError(nextError.message); })
+      .finally(() => setLoading(false));
+  }, [city, reloadKey]);
   useEffect(() => { localStorage.setItem('priceCity', city); }, [city]);
   const visiblePrices = useMemo(() => prices.filter((price) => (!category || price.category === category) && `${price.category} ${price.categoryHindi}`.toLowerCase().includes(search.toLowerCase())), [prices, category, search]);
   function speakBoard() {
@@ -105,7 +110,7 @@ export default function PriceDiscoveryPage() {
         <label><span><Search size={16} /> Search materials</span><Input type="search" placeholder="Iron, copper, aluminium..." value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         <label><span>Material</span><Select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All valuable materials</option>{categories.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</Select></label>
       </section>
-      <section className="price-board section padded"><div className="section-heading"><p className="eyebrow">📍 {city}</p><h2>Today’s material rates</h2><p>Indicative rates per kilogram. Final collection value depends on grade, quantity, and inspection.</p></div><div className="price-grid">{visiblePrices.map((price) => <PriceCard key={price.category} price={price} city={city} />)}</div>{!visiblePrices.length && <p className="price-empty">No matching material found.</p>}</section>
+      <section className="price-board section padded"><div className="section-heading"><p className="eyebrow">📍 {city}</p><h2>Today’s material rates</h2><p>Backend-authoritative rates per kilogram. Final collection value depends on grade, quantity, and inspection.</p></div>{error && <p className="price-empty">{error} <button type="button" onClick={() => setReloadKey((value) => value + 1)}>Retry</button></p>}{loading && <p className="price-empty">Loading current rates…</p>}<div className="price-grid">{visiblePrices.map((price) => <PriceCard key={price.category} price={price} city={city} />)}</div>{!loading && !error && !visiblePrices.length && <p className="price-empty">No matching material found.</p>}</section>
     </main>
   );
 }

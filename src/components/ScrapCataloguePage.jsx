@@ -1,5 +1,5 @@
 import { Button } from './ui';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AirVent, Anchor, BatteryCharging, Cable, Camera, CircuitBoard,
   Computer, Fan, Gamepad2, HardHat, Headphones, Keyboard, Laptop, Microwave,
@@ -8,6 +8,7 @@ import {
   Sun,
 } from 'lucide-react';
 import { scrapItems } from '../data';
+import { getCurrentPrices } from '../services/priceService';
 
 const iconMap = {
   AirVent, Anchor, BatteryCharging, Cable, Camera, CircuitBoard,
@@ -37,6 +38,9 @@ function categoryLabel(category) {
 
 export default function ScrapCataloguePage({ onSellEwaste, onSellNormal }) {
   const [filter, setFilter] = useState('all');
+  const [prices, setPrices] = useState([]);
+  const [priceError, setPriceError] = useState('');
+  useEffect(() => { getCurrentPrices({ location: localStorage.getItem('priceCity') || 'Greater Noida' }).then(({ prices: next }) => { setPrices(next); setPriceError(''); }).catch((error) => { setPrices([]); setPriceError(error.message); }); }, []);
   const visibleItems = useMemo(
     () => (filter === 'all' ? scrapItems : scrapItems.filter((item) => item.category === filter)),
     [filter],
@@ -92,7 +96,7 @@ export default function ScrapCataloguePage({ onSellEwaste, onSellNormal }) {
                 <span>{categoryLabel(item.category)}</span>
               </div>
               <h3>{item.name}</h3>
-              <div className="catalogue-rate">{item.rate}</div>
+              <div className="catalogue-rate">{item.category === 'normal' ? (prices.find((price) => price.category.toLowerCase() === item.name.toLowerCase() || (item.name === 'Copper wire' && price.category === 'Copper')) ? `₹${prices.find((price) => price.category.toLowerCase() === item.name.toLowerCase() || (item.name === 'Copper wire' && price.category === 'Copper')).currentPrice}/kg` : priceError ? 'Rate unavailable' : 'Loading rate…') : item.rate}</div>
               <p>{item.note}</p>
               <Button className="button secondary" type="button" onClick={() => handleSell(item)}>
                 <ShoppingBag size={18} /> Sell

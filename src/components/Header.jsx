@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Leaf,
   Recycle,
+  Search,
   Share2,
   ShoppingBag,
   Sprout,
@@ -311,6 +312,9 @@ export default function Header({
             </a>
           </div>
         </div>
+        <a className="primary-link header-search-link" href={routeHref('#search')} aria-label="Search BinZ" aria-current={route === '#search' ? 'page' : undefined} onClick={handleNavLinkClick}>
+          <Search size={18} aria-hidden="true" /><span>Search</span>
+        </a>
         <Button className="mobile-account-action" variant="secondary" onClick={() => handleMenuAction(isSignedIn ? onSignOut : onOpenAccount)}>
           {isSignedIn ? <LogOut aria-hidden="true" /> : <LogIn aria-hidden="true" />}
           {isSignedIn ? 'Sign out' : 'Sign in'}

@@ -1,28 +1,40 @@
-const priceRows = [
-  ['Iron', 'लोहा', 26, 28, [24, 25, 26, 28]],
-  ['Steel', 'स्टील', 40, 42, [37, 39, 40, 42]],
-  ['Aluminium', 'एल्युमिनियम', 105, 110, [96, 101, 105, 110]],
-  ['Copper', 'तांबा', 650, 665, [620, 638, 650, 665]],
-  ['Brass', 'पीतल', 390, 400, [370, 382, 390, 400]],
-  ['Lead', 'सीसा', 130, 128, [134, 132, 130, 128]],
-  ['Zinc', 'जस्ता', 180, 184, [171, 176, 180, 184]],
-].map(([name, hindi, previousPrice, currentPrice, trend]) => ({
-  category: name,
-  categoryHindi: hindi,
-  previousPrice,
-  currentPrice,
-  unit: 'kg',
-  change: currentPrice - previousPrice,
-  direction: currentPrice > previousPrice ? 'up' : currentPrice < previousPrice ? 'down' : 'stable',
-  trend,
-  updatedAt: 'Indicative BinZ rate',
-}));
+import { requestJson } from './requestJson';
 
-export function getCurrentPrices({ category } = {}) {
-  const prices = category ? priceRows.filter((item) => item.category === category) : priceRows;
-  return Promise.resolve({ prices });
+const hindiNames = {
+  Iron: 'लोहा',
+  Steel: 'स्टील',
+  Aluminium: 'एल्युमिनियम',
+  Copper: 'तांबा',
+  Brass: 'पीतल',
+  Lead: 'सीसा',
+  Zinc: 'जस्ता',
+};
+
+function normalizePrice(price) {
+  return {
+    ...price,
+    category: price.materialName,
+    categoryHindi: hindiNames[price.materialName] || price.materialName,
+    currentPrice: price.price,
+    unit: price.unit,
+    previousPrice: null,
+    change: null,
+    direction: 'stable',
+    trend: [price.price],
+  };
 }
 
-export function getPriceCategories() {
-  return Promise.resolve(priceRows.map(({ category, categoryHindi }) => ({ name: category, nameHindi: categoryHindi })));
+export async function getCurrentPrices({ location = 'Greater Noida', date } = {}) {
+  const query = new URLSearchParams({ location });
+  if (date) query.set('date', date);
+  const result = await requestJson(`/scrap-prices?${query.toString()}`);
+  return {
+    ...result,
+    prices: (Array.isArray(result.prices) ? result.prices : []).map(normalizePrice),
+  };
+}
+
+export async function getPriceCategories(options) {
+  const { prices } = await getCurrentPrices(options);
+  return prices.map(({ category, categoryHindi }) => ({ name: category, nameHindi: categoryHindi }));
 }

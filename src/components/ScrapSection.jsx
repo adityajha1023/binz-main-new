@@ -1,10 +1,11 @@
 import { Button } from './ui';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Laptop, Smartphone, Tablet, BatteryCharging, Anchor,
   ShoppingBag,
 } from 'lucide-react';
 import { scrapItems } from '../data';
+import { getCurrentPrices } from '../services/priceService';
 
 const iconMap = {
   Laptop, Smartphone, Tablet, BatteryCharging, Anchor,
@@ -23,6 +24,8 @@ function categoryLabel(category) {
 
 export default function ScrapSection({ onSellEwaste, onSellNormal }) {
   const featuredItems = scrapItems.filter((item) => item.featured);
+  const [prices, setPrices] = useState([]);
+  useEffect(() => { getCurrentPrices({ location: localStorage.getItem('priceCity') || 'Greater Noida' }).then(({ prices: next }) => setPrices(next)).catch(() => setPrices([])); }, []);
 
   function handleSell(item) {
     if (item.category === 'ewaste') onSellEwaste(item.name);
@@ -46,7 +49,7 @@ export default function ScrapSection({ onSellEwaste, onSellNormal }) {
               <span>{categoryLabel(item.category)}</span>
             </div>
             <h3>{item.name}</h3>
-            <div className="rate"><span>{item.rate}</span></div>
+            <div className="rate"><span>{item.category === 'normal' ? (prices.find((price) => price.category.toLowerCase() === item.name.toLowerCase())?.currentPrice ? `₹${prices.find((price) => price.category.toLowerCase() === item.name.toLowerCase()).currentPrice}/kg` : 'Rate unavailable') : item.rate}</span></div>
             <p>{item.note}</p>
             <Button
               className="button secondary"

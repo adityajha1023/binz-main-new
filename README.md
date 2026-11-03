@@ -46,7 +46,8 @@ This frontend uses Vite 8, so use Node.js `20.19+` or `22.12+`.
 - **Password security:** bcrypt hashing on registration
 - **External services:** Twilio SMS and Gmail SMTP
 - **Uploads:** Multer saves uploaded videos to `backend/uploads/`
-- **Detection:** The backend expects a Python script named `GarbageDetectorLive.py`
+- **Web media:** The deployed frontend uses WebP logo/hero images and a compressed, metadata-only-loaded promotional video. Original source media remains outside `public/assets`; only optimized variants are shipped by Vite.
+- **Cleanup verification:** Authenticated videos are stored as pending records; an admin review endpoint approves or rejects them.
 - **Charts:** Chart.js loaded from a CDN
 - **Styling support:** Tailwind CSS is loaded from a CDN on the upload page
 
@@ -225,7 +226,13 @@ All API requests use JSON except video uploads, which use multipart form data.
 | `GET` | `/leaderboard` | Return the three users with the highest coin balances |
 | `GET` | `/getCoins/:email` | Return a user's current coin balance |
 | `POST` | `/rewardCoins` | Add a caller-supplied number of coins to a user's balance |
-| `POST` | `/uploadVideo` | Save a video, run the Python detector, and award five coins when garbage is detected |
+| `POST` | `/uploadVideo` | Store an authenticated cleanup video as a pending verification |
+| `GET` | `/scrap-prices?location=Greater%20Noida&date=2026-11-03` | Return the applicable effective-dated scrap rates |
+| `GET` | `/scrap-prices/:materialId/history` | Return preserved price history for one material |
+| `POST` | `/scrap-prices` | Admin-only effective-dated price record creation |
+| `GET` | `/cleanup-verifications` | List the signed-in user's verification history and confirmed reward balance |
+| `GET` | `/cleanup-verifications/:verificationId` | Read one owned verification |
+| `PATCH` | `/cleanup-verifications/:verificationId/review` | Admin-only approval or rejection; approval credits `CLEANUP_VIDEO_REWARD` once |
 | `POST` | `/submit-ticket` | Save an e-waste ticket and email a confirmation |
 | `GET` | `/register` | Simple route availability response |
 | `GET` | `/login` | Simple route availability response |
@@ -293,13 +300,13 @@ Defined in `backend/server.js` with these fields:
 4. The homepage reads that local data for display and separately requests leaderboard data from MongoDB.
 5. Booking sends an SMS through Twilio. The current booking UI does not call `/storePhoneNumber`.
 6. Ticket submission stores a ticket, generates an ID, and sends a confirmation email through Gmail SMTP.
-7. The intended video flow stores a file, runs `GarbageDetectorLive.py`, and awards five database coins when the detector prints `GARBAGE_FOUND`.
+7. The cleanup video flow stores a file as a pending verification. An authenticated admin reviews it; only approval credits the server-configured reward once.
 
 ## Known Limitations and Fixes to Prioritize
 
 1. **Secrets in source:** Twilio account credentials are hard-coded in `backend/server.js`. Rotate them and load them from `.env`.
-2. **Missing detector:** `GarbageDetectorLive.py` is not present in the repository, so `/uploadVideo` cannot work as written.
-3. **Upload mismatch:** `HTML/upload.html` uses a simulated client-side reward instead of calling `/uploadVideo`; users can refresh and repeat it.
+2. **Automated detector:** No automated video detector is present. Pending records require trusted admin review through the review endpoint.
+3. **Legacy upload page:** `HTML/upload.html` remains a legacy static page; the active React cleanup flow calls `/uploadVideo` and does not generate client-side rewards.
 4. **Missing ticket assets:** `HTML/test.html` references `styles.css` and `ewaste-background.jpg`, which are absent.
 5. **Registration response mismatch:** the server returns user data under `User`, while `registration.js` reads top-level fields and logs `result.user`; the UI may store undefined registration values.
 6. **Weak authorization:** `/rewardCoins`, `/storePhoneNumber`, and `/getCoins/:email` trust a caller-provided email. Add authenticated sessions or tokens and server-side authorization.

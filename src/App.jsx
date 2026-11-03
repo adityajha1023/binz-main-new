@@ -432,7 +432,7 @@ function App() {
           onSellNormal={handleSellNormal}
         />
         <EWasteEstimatorCta />
-        <EarnSection coins={coins} updateCoins={updateCoins} />
+        <EarnSection coins={coins} updateCoins={updateCoins} isSignedIn={firstName !== 'Guest' && Boolean(localStorage.getItem('email'))} />
         <TrackerSection
           entries={entries}
           setEntries={setEntries}

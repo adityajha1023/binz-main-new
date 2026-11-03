@@ -6,12 +6,13 @@ export default function BrandLogo({ variant = 'header', onClick }) {
     <a className={`brand brand--${variant}`} href="/#home" aria-label="BinZ home" onClick={onClick}>
       <span className="logo-shell">
         <img
-          src="/assets/binz-logo-final.png"
+          src="/assets/binz-logo.webp"
           alt="BinZ"
-          width={1672}
-          height={941}
+          width={800}
+          height={450}
           decoding="async"
           loading={variant === 'footer' ? 'lazy' : 'eager'}
+          fetchPriority={variant === 'footer' ? 'low' : 'high'}
         />
       </span>
     </a>
